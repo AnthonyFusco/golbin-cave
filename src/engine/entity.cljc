@@ -70,9 +70,10 @@
     updated))
 
 (pco/defmutation update-entity-location!
-  [{:keys [world-atom]} {:keys [:engine.entity/entity ::location]}]
-  {::pco/output [::entity]}
-  (let [updated (update-entity-location entity location)]
+  [{:keys [world-atom]} {::keys [entity location]}]
+  {::pco/input [::entity ::location]
+   ::pco/output [::entity]}
+  (let [updated (update-entity-location entity {::location location})]
     (swap! world-atom update-entity updated)
     updated))
 

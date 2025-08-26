@@ -23,8 +23,9 @@
                          [entity/player entity/other]))
    ::dungeon room/rooms})
 
-(defn make-world [entities]
+(defn make-world [entities rooms]
   {::player {::id 0}
+   ::dungeon rooms
    ::entities (into {}
                     (map (juxt ::entity/id identity)
                          entities))})
@@ -80,6 +81,13 @@
                            ::room/desc
                            ::room/text)))
 
+(defn teleport
+  [env entity-id location]
+  (p.eql/process
+   env
+   [(mutation `entity/update-entity-location!
+              {:engine.entity/id entity-id ::entity/location location})]))
+
 (defn compute-view
   [{:keys [current-room]}]
   (let [description (describe-room current-room)]
@@ -101,6 +109,7 @@
 (comment
 
   (tick env)
+  (teleport env 0 1)
 
   (p.eql/process
    env
