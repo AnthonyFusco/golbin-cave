@@ -1,0 +1,76 @@
+/* General page background */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Cinzel', serif; /* medieval-style font */
+  background: #0d0f08 url('https://www.transparenttextures.com/patterns/rough-grey-paper.png') repeat;
+  color: #c4d1b0; /* pale greenish parchment */
+}
+
+/* Dungeon container */
+#app {
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 2rem;
+  background: rgba(10, 15, 10, 0.85); /* dark greenish overlay */
+  border: 2px solid #2f3a2f;
+  box-shadow: inset 0 0 40px #000, 0 0 20px #001100;
+  border-radius: 10px;
+}
+
+/* Headings */
+h1, h2, h3 {
+  font-family: 'Cinzel', serif;
+  color: #d4e4b0; /* pale green highlights */
+  text-shadow: 1px 1px 0 #000, 2px 2px 4px #0b1b0b;
+  margin-bottom: 1rem;
+}
+
+/* Inputs */
+input[type="text"] {
+  background: #1a241a;
+  color: #c4d1b0;
+  border: 1px solid #354135;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-family: 'Cinzel', serif;
+  box-shadow: inset 0 0 5px #000;
+}
+
+/* Buttons */
+button {
+  background: #334433;
+  color: #c4d1b0;
+  border: 1px solid #2b3a2b;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'Cinzel', serif;
+  box-shadow: 0 0 5px #000;
+  transition: all 0.2s;
+}
+
+button:hover {
+  background: #445544;
+  box-shadow: 0 0 15px #77ff77;
+}
+
+/* Flickering torch effect for headers */
+@keyframes torch {
+  0% { text-shadow: 0 0 2px #99ff77, 0 0 5px #88ee55; }
+  50% { text-shadow: 0 0 4px #99ff77, 0 0 10px #88ee55; }
+  100% { text-shadow: 0 0 2px #99ff77, 0 0 5px #88ee55; }
+}
+
+h1 {
+  animation: torch 1.5s infinite alternate;
+}
+
+/* Optional vignette for shadowy corners */
+body::before {
+  content: "";
+  position: fixed;
+  top:0; left:0; width:100%; height:100%;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(0,20,0,0.2) 50%, rgba(0,0,0,0.9) 100%);
+}

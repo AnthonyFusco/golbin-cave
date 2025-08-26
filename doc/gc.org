@@ -1,0 +1,19 @@
+* Goblin cave
+
+the player input makes the game tick
+no game engine
+
+dropped into a cave, injured with nothing in the dark
+inspi from barbarian
+text interface
+maybe you're a goblin, then you can own part of the cave
+magic is a programming game, fn composition, maybe can teach func programming
+live coding
+martial is ?
+monster faction and human faction
+
+** MVP
+control using fns
+move in dungeon
+change boolean like a switch, triggers an event, a door is now open
+think about battles
