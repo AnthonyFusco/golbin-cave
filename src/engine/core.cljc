@@ -22,7 +22,7 @@
         initiatives entity-ids]
     {::player {::id 0}
      ::dungeon rooms
-     ::history []
+     ::history nil
      ::initiatives initiatives
      ::entities entities}))
 
@@ -35,8 +35,55 @@
   {:world (do (prn "get world")
               world)})
 
+(pco/defresolver history-resolver
+  [{:keys [world]} _]
+  {::history (do (prn "get history")
+                 (::history world))})
+
+(pco/defresolver initiatives-resolver
+  [{:keys [world]} _]
+  {::initiatives (do (prn "get initiatives")
+                 (::initiatives world))})
+
+(pco/defresolver acting-resolver
+  [{:keys [world]} _]
+  {::acting (do (prn "get acting")
+                (first (::initiatives world)))})
+
+(defn update-initiatives
+  [world initiatives]
+  (assoc world ::initiatives initiatives))
+
+(pco/defmutation advance-initiative
+  [{:keys [world]}]
+  (let [initiatives (::initiatives world)
+        updated-initiatives (if (>= (count initiatives) 2)
+                              (concat (rest initiatives) [(first initiatives)])
+                              initiatives)
+        updated-world (update-initiatives world updated-initiatives)]
+    (utils/computation-valid updated-world)))
+
+(defn describe-room
+  [room]
+  (if room
+    (str "Description: " (-> room
+                             ::room/desc
+                             ::room/text))
+    "The Abyss"))
+
+(pco/defresolver compute-entity-view
+  [{:keys [::room/room]}]
+  {:engine.view/view
+   (let [description (describe-room room)]
+     {:description description})})
+
 (def indexes (-> (pci/register [entity/resolvers
                                 room/resolvers
+                                advance-initiative
+                                initiatives-resolver
+                                acting-resolver
+                                compute-entity-view
+                                history-resolver
                                 world-resolver])
                  (p.plugin/register pbip/mutation-resolve-params)))
 
@@ -70,11 +117,15 @@
           (with-world result)
           (with-history mutation)))))
 
+(defn get-history
+  [env]
+  (query-one env ::history))
+
 (defn get-world
   [env]
   (query-one env :world))
 
-(defn get-player-location
+(defn get-location
   [env player-id]
   (query-one env {::entity/id player-id} ::entity/location))
 
@@ -82,23 +133,19 @@
   [env room-id]
   (query-one env {::room/id room-id} ::room/room))
 
-(defn describe-room
-  [room]
-  (str "Description: " (-> room
-                           ::room/desc
-                           ::room/text)))
+(defn teleport-command
+  [entity-id location]
+  (mutation `entity/update-entity-location
+            {:engine.entity/id entity-id ::entity/location location}))
+
+(def advance-initiative-command
+  '(engine.core/advance-initiative))
 
 (defn teleport
   [env entity-id location]
   (process
    env
-   (mutation `entity/update-entity-location
-             {:engine.entity/id entity-id ::entity/location location})))
-
-(defn compute-view
-  [{:keys [current-room]}]
-  (let [description (describe-room current-room)]
-    {:description description}))
+   (teleport-command entity-id location)))
 
 (defn view!
   [{:keys [description]}]
@@ -106,100 +153,5 @@
 
 (defn tick
   [env actions]
-  (let [player-id 0
-        player-location (get-player-location env player-id)
-        player-room (get-room env player-location)
-        view (compute-view {:current-room player-room})]
-    (view! view)
-    view))
-
-(comment
-
-  (tick env [])
-  (teleport env 0 666)
-  (get-world env)
-
-  (p.eql/process
-   env
-   '[(:engine.core/entities {:engine.entity/x 0
-                             :engine.entity/y 0
-                             :engine.entity/z 0})])
-
-  (p.eql/process
-   env
-   '[(:engine.core/entities {::entity/location 0})])
-
-  (p.eql/process
-   env
-   '[(:engine.core/entities {:engine.entity/x 0
-                             :engine.entity/y 0
-                             :engine.entity/z 0})
-     {:engine.core/entities [:engine.entity/id ::entity/coords ::entity/location]}])
-
-  (p.eql/process
-   env
-   '[{(:engine.core/entities {:engine.entity/x 0
-                              :engine.entity/y 0
-                              :engine.entity/z 0})
-      [::entity/id ::entity/coords ::entity/entity]}])
-
-  (p.eql/process
-   env
-   '[::entities])
-
-  (p.eql/process
-   env
-   '[{::entities [::entity/id]}])
-
-  (p.eql/process
-   env
-   [{::entities [::entity/location]}])
-
-  (p.eql/process-one
-   env
-   {::entity/id 1}
-   ::entity/location)
-
-  (p.eql/process
-   env
-   '[{::entities [::entity/id ::entity/location]}])
-
-  (p.eql/process env [`(engine.entity/update-entity-fn!
-                        ~{::entity/id 1
-                          :fn entity/update-entity-location-fn
-                          :args [{:engine.entity/location 4}]})])
-  (p.eql/process env [{`(engine.entity/update-entity-fn!
-                         ~{::entity/id 1
-                           :fn entity/update-entity-location-fn
-                           :args [{:engine.entity/location 4}]})
-                       [::entity/location]}])
-
-  :end)
-
-(comment
-  (p.eql/process-one env {::entity/id 0} ::entity/entity)
-
-  (p.eql/process env [`(update-entity-position!
-                        {::entity/entity {::entity/id 4 ::entity/coords {::entity/y 8}} ::entity/coords {::entity/x 56}})])
-
-  (p.eql/process env [{`(update-entity-position! {::entity/entity {::entity/id 4 ::entity/coords {::entity/y 8}} ::entity/coords {::entity/x 56}})
-                       [::entity/id ::entity/entity ::entity/coords]}])
-
-  (let [entity (p.eql/process-one env {::entity/id 0} ::entity/entity)]
-    (p.eql/process env [`(update-entity-position! ~{::entity/entity entity ::entity/coords {::entity/y 48}})]))
-
-  (let [entity (p.eql/process-one env {::entity/id 0} ::entity/entity)]
-    (p.eql/process env [(mutation 'engine.core/update-entity-position! {::entity/entity entity ::entity/coords {::entity/y 8}})]))
-
-  (p.eql/process env [`(update-entity-position! {::entity/id 0 ::entity/coords {::entity/z 666}})])
-  (p.eql/process env [(mutation `update-entity-position! {::entity/id 0 ::entity/coords {::entity/z 667}})])
-
-  (p.eql/process env [`(update-entity-fn! ~{::entity/id 1
-                                            :fn entity/update-entity-position
-                                            :args [{::entity/x 7 ::entity/z 99}]})])
-  (p.eql/process env [(mutation `update-entity-fn! {::entity/id 1
-                                                    :fn entity/update-entity-position
-                                                    :args [{::entity/x 7 ::entity/z 92}]})])
-
-  (:world env)
-  :end)
+  (let [actions-then-advance (conj actions advance-initiative-command)]
+    (reduce process env actions-then-advance)))

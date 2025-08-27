@@ -22,12 +22,15 @@
                  (map (juxt ::id identity)
                       [room1 room2])))
 
+(def room-id-equivalence
+  (pbir/equivalence-resolver :engine.entity/location :engine.room/id))
+
 (pco/defresolver room-resolver
   [{:keys [world ::id]}]
   {::room (do (prn "room resolver")
               (get (:engine.core/dungeon world) id))})
 
-(def resolvers [room-resolver])
+(def resolvers [room-resolver room-id-equivalence])
 
 (comment
 

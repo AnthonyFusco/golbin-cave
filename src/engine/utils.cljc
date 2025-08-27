@@ -1,6 +1,7 @@
 (ns engine.utils)
 
-(defn mutation [sym args]
+(defn mutation
+  [sym args]
   `(~sym ~args))
 
 (defn index-by

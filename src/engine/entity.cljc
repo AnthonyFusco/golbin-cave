@@ -69,7 +69,6 @@
   {::pco/output [{:engine.core/entities [::entity]}]}
   {:engine.core/entities
    (do (prn "entities resolver")
-       (prn (pco/params env))
        (let [entities (vals (:engine.core/entities world))
              location (pco/params env)]
          (if (seq location)
