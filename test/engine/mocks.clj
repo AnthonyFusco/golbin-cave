@@ -31,4 +31,4 @@
 
 (def mock-world {:world world-value})
 
-(def test-env (-> core/indexes))
+(def env (-> core/indexes (assoc :world world-value)))

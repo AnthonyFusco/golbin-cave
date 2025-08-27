@@ -9,47 +9,43 @@
    [com.wsscode.pathom3.plugin :as p.plugin]
    [engine.room :as room]
    [engine.entity :as entity]
-   [engine.utils :refer [mutation]]))
+   [engine.utils :refer [mutation] :as utils]))
 
 (defn greet
   "Callable entry point to the application."
   [data]
   (str "Hello, " (or data "World") "!"))
 
-(def world-init
-  {::player {::id 0}
-   ::entities (into {}
-                    (map (juxt ::entity/id identity)
-                         [entity/player entity/other]))
-   ::dungeon room/rooms})
-
 (defn make-world [entities rooms]
-  {::player {::id 0}
-   ::dungeon rooms
-   ::entities (into {}
-                    (map (juxt ::entity/id identity)
-                         entities))})
+  (let [entity-ids (map ::entity/id entities)
+        entities (utils/index-by ::entity/id entities)
+        initiatives entity-ids]
+    {::player {::id 0}
+     ::dungeon rooms
+     ::history []
+     ::initiatives initiatives
+     ::entities entities}))
 
-(def world-atom (atom world-init))
+(def world-init
+  (make-world [entity/other entity/player] room/rooms))
 
-(pco/defmutation update-world!
-  [env new-world]
-  (assoc env :world new-world))
-
-(pco/defresolver world-value
-  [{:keys [world-atom]} _]
+(pco/defresolver world-resolver
+  [{:keys [world]} _]
   {::pco/output [:world]}
-  {:world (do (prn "@world-atom")
-              @world-atom)})
+  {:world (do (prn "get world")
+              world)})
 
 (def indexes (-> (pci/register [entity/resolvers
                                 room/resolvers
-                                world-value
-                                update-world!])
+                                world-resolver])
                  (p.plugin/register pbip/mutation-resolve-params)))
 
+(defn with-world
+  [env world]
+  (assoc env :world world))
+
 (def env (-> indexes
-             (assoc :world-atom world-atom)))
+             (with-world world-init)))
 
 (defn query
   [env args]
@@ -61,11 +57,22 @@
   ([env ctx arg]
    (p.eql/process-one env ctx arg)))
 
+(defn with-history
+  [env mutation]
+  (update-in env [:world ::history] conj mutation))
+
+(defn process
+  [env mutation]
+  (let [computation (query-one env mutation)
+        {:keys [result]} computation]
+    (when (utils/computation-valid? computation)
+      (-> env
+          (with-world result)
+          (with-history mutation)))))
+
 (defn get-world
   [env]
   (query-one env :world))
-
-(p.eql/process-one env {} :world)
 
 (defn get-player-location
   [env player-id]
@@ -83,10 +90,10 @@
 
 (defn teleport
   [env entity-id location]
-  (p.eql/process
+  (process
    env
-   [(mutation `entity/update-entity-location!
-              {:engine.entity/id entity-id ::entity/location location})]))
+   (mutation `entity/update-entity-location
+             {:engine.entity/id entity-id ::entity/location location})))
 
 (defn compute-view
   [{:keys [current-room]}]
@@ -98,7 +105,7 @@
   (prn description))
 
 (defn tick
-  [env]
+  [env actions]
   (let [player-id 0
         player-location (get-player-location env player-id)
         player-room (get-room env player-location)
@@ -108,8 +115,9 @@
 
 (comment
 
-  (tick env)
-  (teleport env 0 1)
+  (tick env [])
+  (teleport env 0 666)
+  (get-world env)
 
   (p.eql/process
    env
@@ -158,11 +166,11 @@
 
   (p.eql/process env [`(engine.entity/update-entity-fn!
                         ~{::entity/id 1
-                          :fn entity/update-entity-location
+                          :fn entity/update-entity-location-fn
                           :args [{:engine.entity/location 4}]})])
   (p.eql/process env [{`(engine.entity/update-entity-fn!
                          ~{::entity/id 1
-                           :fn entity/update-entity-location
+                           :fn entity/update-entity-location-fn
                            :args [{:engine.entity/location 4}]})
                        [::entity/location]}])
 
@@ -194,9 +202,4 @@
                                                     :args [{::entity/x 7 ::entity/z 92}]})])
 
   (:world env)
-  @world-atom
   :end)
-
-;; (def player-entity (psm/smart-map env {::entity/id 0}))
-;; (::entity/entity player-entity)
-;; (::entity/coords player-entity)

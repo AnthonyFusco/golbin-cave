@@ -1,11 +1,7 @@
 (ns engine.entity
-  (:require [com.wsscode.pathom3.connect.indexes :as pci]
-            [com.wsscode.pathom3.connect.operation :as pco]
-            [com.wsscode.pathom3.interface.eql :as p.eql]
-            [com.wsscode.pathom3.interface.smart-map :as psm]
-            [com.wsscode.pathom3.plugin :as p.plugin]
-            [com.wsscode.pathom3.connect.built-in.plugins :as pbip]
-            [com.wsscode.pathom3.connect.built-in.resolvers :as pbir]))
+  (:require
+   [com.wsscode.pathom3.connect.operation :as pco]
+   [engine.utils :as utils]))
 
 (def player
   {::id 0
@@ -50,32 +46,18 @@
    (do (prn (str "id->coords" " id:" id))
        (::coords (get entities id)))})
 
-(defn update-entity-location [entity location]
-  (merge entity location))
+(defn update-entity-location-fn [entity location]
+  (merge entity {::location location}))
 
 (defn update-entity [world entity]
   (assoc-in world [:engine.core/entities (:engine.entity/id entity)] entity))
 
-(pco/defmutation update-entity!
-  [{:keys [world-atom]} entity]
-  {::pco/output [:engine.entity/entity]}
-  (swap! world-atom update-entity entity)
-  {:engine.entity/entity entity})
-
-(pco/defmutation update-entity-fn!
-  [{:keys [world-atom]} {:keys [:engine.entity/entity fn args]}]
-  {::pco/output [:engine.entity/entity]}
-  (let [updated (apply fn entity args)]
-    (swap! world-atom update-entity updated)
-    updated))
-
-(pco/defmutation update-entity-location!
-  [{:keys [world-atom]} {::keys [entity location]}]
-  {::pco/input [::entity ::location]
-   ::pco/output [::entity]}
-  (let [updated (update-entity-location entity {::location location})]
-    (swap! world-atom update-entity updated)
-    updated))
+(pco/defmutation update-entity-location
+  [{:keys [world]} {::keys [entity location]}]
+  {::pco/input [::entity ::location]}
+  (let [updated-entity (update-entity-location-fn entity location)
+        updated-world (update-entity world updated-entity)]
+    (utils/computation-valid updated-world)))
 
 (pco/defresolver entity-resolver
   [{:keys [:engine.entity/id :engine.core/entities]}]
@@ -98,9 +80,7 @@
 (def resolvers [entity-resolver
                 entity->id
                 entity->coords
-                update-entity!
-                update-entity-fn!
                 entities-resolver
                 id->location
-                update-entity-location!
+                update-entity-location
                 id->coords])

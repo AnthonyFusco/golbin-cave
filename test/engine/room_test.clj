@@ -8,12 +8,12 @@
   (testing "resolves existing room"
     (let [roomid 0
           world-atom (atom mock/world-value)
-          env (assoc mock/test-env :world-atom world-atom)
+          env (assoc mock/env :world-atom world-atom)
           result (p.eql/process-one env {::room/id roomid} ::room/room)]
       (is (= mock/room1 result))))
   (testing "do not resolve unexisting room"
     (let [roomid 666
           world-atom (atom mock/world-value)
-          env (assoc mock/test-env :world-atom world-atom)
+          env (assoc mock/env :world-atom world-atom)
           result (p.eql/process-one env {::room/id roomid} ::room/room)]
       (is (= nil result)))))
