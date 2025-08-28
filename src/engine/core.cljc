@@ -43,7 +43,7 @@
 (pco/defresolver initiatives-resolver
   [{:keys [world]} _]
   {::initiatives (do (prn "get initiatives")
-                 (::initiatives world))})
+                     (::initiatives world))})
 
 (pco/defresolver acting-resolver
   [{:keys [world]} _]
@@ -77,8 +77,15 @@
    (let [description (describe-room room)]
      {:description description})})
 
+(pco/defresolver actions?
+  [{:keys [::room/room]}]
+  {::actions
+   (let [{::room/keys [exits]} room]
+     (mapcat room/exit-to-action exits))})
+
 (def indexes (-> (pci/register [entity/resolvers
                                 room/resolvers
+                                actions?
                                 advance-initiative
                                 initiatives-resolver
                                 acting-resolver
@@ -153,5 +160,5 @@
 
 (defn tick
   [env actions]
-  (let [actions-then-advance (conj actions advance-initiative-command)]
-    (reduce process env actions-then-advance)))
+  (let [actions-then-advance-initiative (conj actions advance-initiative-command)]
+    (reduce process env actions-then-advance-initiative)))

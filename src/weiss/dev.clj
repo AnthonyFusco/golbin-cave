@@ -57,3 +57,7 @@
 (core/query-one tmp3 ::core/acting)
 (core/query-one core/env ::core/initiatives)
 (core/query-one tmp3 ::core/initiatives)
+
+(room/room-actions room/room2)
+
+(::core/actions player)
