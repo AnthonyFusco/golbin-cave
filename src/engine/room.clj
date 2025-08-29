@@ -22,11 +22,18 @@
                      {:exit/cardinal :exit.cardinal/south
                       :exit/type :exit.type/door
                       :exit/state :exit.state/open
-                      ::next 0}]})
+                      ::next 2}]})
+
+(def room3 {::id 2
+            ::desc {::text "a strange chamber"}
+            ::exits [{:exit/cardinal :exit.cardinal/west
+                      :exit/type :exit.type/secret-door
+                      :exit/state :exit.state/hidden
+                      ::next 1}]})
 
 (def rooms (into {}
                  (map (juxt ::id identity)
-                      [room1 room2])))
+                      [room1 room2 room3])))
 
 (def room-id-equivalence
   (pbir/equivalence-resolver :engine.entity/location :engine.room/id))
@@ -40,34 +47,40 @@
 
 (defmulti exit-to-action :exit/type)
 (defmulti door-to-action :exit/state)
+(defmulti secret-door-to-action :exit/state)
 
 (defmethod exit-to-action :exit.type/door
   [exit]
   (door-to-action exit))
 
+(defmethod exit-to-action :exit.type/secret-door
+  [exit]
+  (secret-door-to-action exit))
+
 (defmethod door-to-action :exit.state/closed
   [exit]
-  (let [common-args exit]
-    [{:engine.action/action :engine.action/open
-      :engine.action/args common-args}
-     {:engine.action/action :engine.action/open-and-advance
-      :engine.action/args common-args}]))
+  [{:engine.action/action :engine.action/open
+    :engine.action/args exit}
+   {:engine.action/action :engine.action/open-and-advance
+    :engine.action/args exit}])
 
 (defmethod door-to-action :exit.state/open
   [exit]
-  (let [common-args exit]
-    [{:engine.action/action :engine.action/close
-      :engine.action/args common-args}
-     {:engine.action/action :engine.action/advance
-      :engine.action/args common-args}]))
+  [{:engine.action/action :engine.action/close
+    :engine.action/args exit}
+   {:engine.action/action :engine.action/advance
+    :engine.action/args exit}])
+
+(defmethod secret-door-to-action :exit.state/hidden
+  [exit]
+  [{:engine.action/action :engine.action/reveal
+    :engine.action/args exit}])
+
+(defmethod secret-door-to-action :default
+  [exit]
+  (door-to-action exit))
 
 (defn room-actions
   [room]
   (let [{::keys [exits]} room]
     (mapcat exit-to-action exits)))
-
-(comment
-
-  rooms
-
-  :end)

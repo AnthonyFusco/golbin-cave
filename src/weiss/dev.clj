@@ -61,3 +61,93 @@
 (room/room-actions room/room2)
 
 (::core/actions player)
+
+(derive ::toto ::person)
+(derive ::toto ::con)
+(isa? ::toto ::con)
+(isa? ::toto ::person)
+(isa? ::toto ::jambon)
+
+:semantics/exit ;; looking for an exit, size ?
+:semantics/food
+:semantics/purify
+:intrinsic/breakable
+:intrinsic/flammable
+:intrinsic/poisoned ;; strong ? weak ? level ?
+:object/potato
+:object/wooden-door
+:object/iron-door
+:action/eat
+:action/open
+:action/burn
+:action/hit
+:action/wash ;; level ?
+:state/opened
+:state/closed ;; locked ? broken ?
+
+:action/open
+
+(def semantic-rules
+  {:semantics/exit
+   {:action/open (fn [{:keys [name]}] {:describe (str "You go through the " name)})
+    :action/close (fn [{:keys [instance]}]
+                    (let [{:keys [state]} instance]
+                      (if (= state :open)
+                        {:describe "You close the door"}
+                        {:describe "Already closed"
+                         :something "more"})))}
+
+   :intrinsic/flammable
+   {:action/burn (fn [{:keys [name]}] {:describe (str "The " name " bursts into flames!")})}})
+
+(def object-rules
+  {:object/wooden-door
+   {:name "wooden door"
+    :intrinsic #{:intrinsic/flammable}
+    :semantics #{:semantics/exit}
+    :actions   {:action/open (fn [_] {:describe "You push open the creaky wooden door"})
+                :action/close (fn [_] {:describe "You close the creaky wooden door"})}}
+
+   :object/door
+   {:semantics #{:semantics/exit}}
+
+   :object/iron-door
+   {:name "iron door"
+    :intrinsic #{}
+    :semantics #{:semantics/exit}
+    :actions   {:action/open (fn [{:keys [name]}] {:describe (str "You heave the " name " open")})}}})
+
+(defn make-handler-args
+  [rule-key rule instance]
+  {:rule-key rule-key
+   :rule rule
+   :name (or (:name rule) (name rule-key))
+   :instance (or instance {})})
+
+(defn perform
+  [action rule-key & {:as instance :or {}}]
+  (let [object-rule (object-rules rule-key)
+        object-handler (get-in object-rule [:actions action])
+        semantic-handler (some (fn [semantic-or-intrinsic-tag]
+                                 (get-in semantic-rules [semantic-or-intrinsic-tag action]))
+                               (concat (:semantics object-rule)
+                                       (:intrinsic object-rule)))
+        handler-args (make-handler-args rule-key object-rule instance)
+        semantic-handler-result (when semantic-handler (semantic-handler handler-args))
+        object-handler-result (when object-handler (object-handler handler-args))]
+    (if (or semantic-handler-result object-handler-result)
+      (merge semantic-handler-result object-handler-result)
+      {:describe (str "Nothing happens when you " (name action) " the " (name rule-key))})))
+
+(perform :action/open :object/wooden-door)
+
+(perform :action/open :object/iron-door)
+
+(perform :action/burn :object/wooden-door)
+
+(perform :action/burn :object/iron-door)
+
+(perform :action/open :object/door)
+(perform :action/close :object/wooden-door {:state :close})
+(perform :action/close :object/door {:state :close})
+(perform :action/close :object/door {:state :open})
