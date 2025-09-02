@@ -17,3 +17,13 @@ control using fns
 move in dungeon
 change boolean like a switch, triggers an event, a door is now open
 think about battles
+
+more like dwarf fortress
+goblins are programmable
+your main char can dwelve manually
+resources to collect, miners to code
+eclairers to code
+each new goblin gives you more processing power
+queries are question you formulate to the world, enabling to use the data to build behavior
+golbins are individual but share a mind link to the leader
+this link enables more magic for the leader

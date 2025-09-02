@@ -1,16 +1,11 @@
 (ns weiss.dev
   (:require
-   [com.wsscode.pathom3.connect.built-in.resolvers :as pbir]
-   [com.wsscode.pathom3.connect.built-in.plugins :as pbip]
-   [com.wsscode.pathom3.connect.indexes :as pci]
-   [com.wsscode.pathom3.connect.operation :as pco]
+   [clojure.set :as set]
    [com.wsscode.pathom3.interface.eql :as p.eql]
    [com.wsscode.pathom3.interface.smart-map :as psm]
-   [com.wsscode.pathom3.plugin :as p.plugin]
-   [engine.room :as room]
-   [engine.entity :as entity]
    [engine.core :as core]
-   [engine.utils :refer [mutation] :as utils]))
+   [engine.entity :as entity]
+   [engine.room :as room]))
 
 (def entitylist [entity/player entity/other])
 (map #(select-keys % [::entity/id]) entitylist)
@@ -87,20 +82,53 @@
 
 :action/open
 
+(defn lever-activate-default
+  []
+  {:describe "You heard a click somewhere."
+   :state :on})
+
+(defn lever-deactivate-default
+  []
+  {:describe "You heard a muffled noise."
+   :state :off})
+
+(defn default-failed-action
+  []
+  {:describe "Nothing happens"})
+
 (def semantic-rules
   {:semantics/exit
-   {:action/open (fn [{:keys [name]}] {:describe (str "You go through the " name)})
+   {:action/open (fn [{:keys [instance]}]
+                   (let [{:keys [state]} instance]
+                     (if (= state :open)
+                       {:describe "Already opened."}
+                       {:describe (str "You open the " name)
+                        :engine.action/mutation {:state :open}})))
     :action/close (fn [{:keys [instance]}]
                     (let [{:keys [state]} instance]
                       (if (= state :open)
-                        {:describe "You close the door"}
-                        {:describe "Already closed"
-                         :something "more"})))}
+                        {:describe "You close the door"
+                         :state :closed}
+                        {:describe "Already closed"})))}
+   :semantics/activable
+   {:action/activate (fn [{:keys [instance]}]
+                       (let [{:keys [state onActivate onDeactivate]} instance
+                             onActivate (or onActivate lever-activate-default)
+                             onDeactivate (or onDeactivate lever-deactivate-default)]
+                         (case state
+                           :on (onDeactivate)
+                           :off (onActivate)
+                           default-failed-action)))}
+   :semantics/food
+   {:action/eat (fn [{:keys [name]}] {:describe (str "Nom! No more " name " :(")})}
+
+   #{:semantics/food :intrinsic/poisoned}
+   {:action/eat (fn [{:keys [name]}] {:describe (str "Ouch! The " name " is poisoned :(")})}
 
    :intrinsic/flammable
    {:action/burn (fn [{:keys [name]}] {:describe (str "The " name " bursts into flames!")})}})
 
-(def object-rules
+(def rules
   {:object/wooden-door
    {:name "wooden door"
     :intrinsic #{:intrinsic/flammable}
@@ -111,11 +139,31 @@
    :object/door
    {:semantics #{:semantics/exit}}
 
+   :object/lever
+   {:semantics #{:semantics/activable}}
+
+   "runtime generated object 1"
+   {:name "boulgiboulga"
+    :semantics #{:semantics/food}
+    :intrinsic #{:intrinsic/poisoned}}
+
    :object/iron-door
    {:name "iron door"
     :intrinsic #{}
     :semantics #{:semantics/exit}
     :actions   {:action/open (fn [{:keys [name]}] {:describe (str "You heave the " name " open")})}}})
+
+(defn choose-rule
+  "Chooses the most specific rule from a list of applicable rules"
+  [applicable-rule-keys]
+  (case (count applicable-rule-keys)
+    0  nil
+    1 (first applicable-rule-keys)
+    (->> applicable-rule-keys
+         (map #(if (seqable? %) % (list %)))
+         (sort-by count)
+         reverse
+         first)))
 
 (defn make-handler-args
   [rule-key rule instance]
@@ -124,20 +172,41 @@
    :name (or (:name rule) (name rule-key))
    :instance (or instance {})})
 
+(defn mutation-handler
+  [mutation])
+
+(defn match-rules
+  [xs target-set]
+  (filter #(or (= (key %) target-set)
+               (contains? target-set (key %)))
+          (seq xs)))
+
 (defn perform
   [action rule-key & {:as instance :or {}}]
-  (let [object-rule (object-rules rule-key)
-        object-handler (get-in object-rule [:actions action])
-        semantic-handler (some (fn [semantic-or-intrinsic-tag]
-                                 (get-in semantic-rules [semantic-or-intrinsic-tag action]))
-                               (concat (:semantics object-rule)
-                                       (:intrinsic object-rule)))
-        handler-args (make-handler-args rule-key object-rule instance)
+  (let [rule (rules rule-key)
+        rule-handler (get-in rule [:actions action])
+        applicable-semantic-rules (match-rules semantic-rules
+                                                (set/union (:semantics rule)
+                                                           (:intrinsic rule)))
+        selected-semantic-rule-key (choose-rule (keys applicable-semantic-rules))
+        selected-semantic-rule (get semantic-rules selected-semantic-rule-key)
+        handler-args (make-handler-args rule-key rule instance)
+        semantic-handler (get selected-semantic-rule action)
         semantic-handler-result (when semantic-handler (semantic-handler handler-args))
-        object-handler-result (when object-handler (object-handler handler-args))]
-    (if (or semantic-handler-result object-handler-result)
-      (merge semantic-handler-result object-handler-result)
+        rule-handler-result (when rule-handler (rule-handler handler-args))]
+    (if (or semantic-handler-result rule-handler-result)
+      (merge semantic-handler-result rule-handler-result)
       {:describe (str "Nothing happens when you " (name action) " the " (name rule-key))})))
+
+(match-rules [:a :c #{:a :b}] #{:a :b})
+(match-rules [:a :c #{:a :b}] #{:a :b :d})
+
+(get-in semantic-rules [#{:intrinsic/poisoned :semantics/food} :action/eat])
+
+(perform :action/eat "runtime generated object 1")
+
+(perform :action/activate :object/lever {:state :on})
+(perform :action/activate :object/lever {:state :off})
 
 (perform :action/open :object/wooden-door)
 
