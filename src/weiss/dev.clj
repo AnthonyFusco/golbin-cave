@@ -3,6 +3,7 @@
    [clojure.set :as set]
    [com.wsscode.pathom3.interface.eql :as p.eql]
    [com.wsscode.pathom3.interface.smart-map :as psm]
+   [engine.object :as object]
    [engine.core :as core]
    [engine.entity :as entity]
    [engine.room :as room]))
@@ -53,44 +54,19 @@
 (core/query-one core/env ::core/initiatives)
 (core/query-one tmp3 ::core/initiatives)
 
-(room/room-actions room/room2)
-
-(::core/actions player)
-
-(derive ::toto ::person)
-(derive ::toto ::con)
-(isa? ::toto ::con)
-(isa? ::toto ::person)
-(isa? ::toto ::jambon)
-
-:semantics/exit ;; looking for an exit, size ?
-:semantics/food
-:semantics/purify
-:intrinsic/breakable
-:intrinsic/flammable
-:intrinsic/poisoned ;; strong ? weak ? level ?
-:object/potato
-:object/wooden-door
-:object/iron-door
-:action/eat
-:action/open
-:action/burn
-:action/hit
-:action/wash ;; level ?
-:state/opened
-:state/closed ;; locked ? broken ?
-
-:action/open
-
 (defn lever-activate-default
-  []
-  {:describe "You heard a click somewhere."
-   :state :on})
+  [this]
+  (let [linked-to (:linked-to this)
+        linked-to-effect {:action/activate linked-to}
+        effects [linked-to-effect]]
+    {:describe "You heard a click somewhere."
+     ::object/state {:switched? true}
+     :engine.action/effects effects}))
 
 (defn lever-deactivate-default
-  []
+  [this]
   {:describe "You heard a muffled noise."
-   :state :off})
+   ::object/state {:switched? false}})
 
 (defn default-failed-action
   []
@@ -112,13 +88,13 @@
                         {:describe "Already closed"})))}
    :semantics/activable
    {:action/activate (fn [{:keys [instance]}]
-                       (let [{:keys [state onActivate onDeactivate]} instance
+                       (let [{:keys [switched? onActivate onDeactivate]} instance
                              onActivate (or onActivate lever-activate-default)
                              onDeactivate (or onDeactivate lever-deactivate-default)]
-                         (case state
-                           :on (onDeactivate)
-                           :off (onActivate)
-                           default-failed-action)))}
+                         (case switched?
+                           true (onDeactivate instance)
+                           false (onActivate instance)
+                           (default-failed-action))))}
    :semantics/food
    {:action/eat (fn [{:keys [name]}] {:describe (str "Nom! No more " name " :(")})}
 
@@ -129,17 +105,17 @@
    {:action/burn (fn [{:keys [name]}] {:describe (str "The " name " bursts into flames!")})}})
 
 (def rules
-  {:object/wooden-door
+  {::object/wooden-door
    {:name "wooden door"
     :intrinsic #{:intrinsic/flammable}
     :semantics #{:semantics/exit}
     :actions   {:action/open (fn [_] {:describe "You push open the creaky wooden door"})
                 :action/close (fn [_] {:describe "You close the creaky wooden door"})}}
 
-   :object/door
+   ::object/door
    {:semantics #{:semantics/exit}}
 
-   :object/lever
+   ::object/lever
    {:semantics #{:semantics/activable}}
 
    "runtime generated object 1"
@@ -147,7 +123,7 @@
     :semantics #{:semantics/food}
     :intrinsic #{:intrinsic/poisoned}}
 
-   :object/iron-door
+   ::object/iron-door
    {:name "iron door"
     :intrinsic #{}
     :semantics #{:semantics/exit}
@@ -186,8 +162,8 @@
   (let [rule (rules rule-key)
         rule-handler (get-in rule [:actions action])
         applicable-semantic-rules (match-rules semantic-rules
-                                                (set/union (:semantics rule)
-                                                           (:intrinsic rule)))
+                                               (set/union (:semantics rule)
+                                                          (:intrinsic rule)))
         selected-semantic-rule-key (choose-rule (keys applicable-semantic-rules))
         selected-semantic-rule (get semantic-rules selected-semantic-rule-key)
         handler-args (make-handler-args rule-key rule instance)
@@ -198,25 +174,27 @@
       (merge semantic-handler-result rule-handler-result)
       {:describe (str "Nothing happens when you " (name action) " the " (name rule-key))})))
 
-(match-rules [:a :c #{:a :b}] #{:a :b})
-(match-rules [:a :c #{:a :b}] #{:a :b :d})
+(defn object-perform
+  [action {::object/keys [object state]}]
+  (perform action object state))
 
 (get-in semantic-rules [#{:intrinsic/poisoned :semantics/food} :action/eat])
 
 (perform :action/eat "runtime generated object 1")
 
-(perform :action/activate :object/lever {:state :on})
-(perform :action/activate :object/lever {:state :off})
+(perform :action/activate ::object/lever {:switched? true})
+(perform :action/activate ::object/lever {:switched? false})
+(object-perform :action/activate room/lever)
 
-(perform :action/open :object/wooden-door)
+(perform :action/open ::object/wooden-door)
 
-(perform :action/open :object/iron-door)
+(perform :action/open ::object/iron-door)
 
-(perform :action/burn :object/wooden-door)
+(perform :action/burn ::object/wooden-door)
 
-(perform :action/burn :object/iron-door)
+(perform :action/burn ::object/iron-door)
 
-(perform :action/open :object/door)
-(perform :action/close :object/wooden-door {:state :close})
-(perform :action/close :object/door {:state :close})
-(perform :action/close :object/door {:state :open})
+(perform :action/open ::object/door)
+(perform :action/close ::object/wooden-door {:state :close})
+(perform :action/close ::object/door {:state :close})
+(perform :action/close ::object/door {:state :open})

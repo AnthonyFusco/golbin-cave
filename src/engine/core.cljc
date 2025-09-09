@@ -81,7 +81,8 @@
   [{:keys [::room/room]}]
   {::actions
    (let [{::room/keys [exits]} room]
-     (mapcat room/exit-to-action exits))})
+     ;; (mapcat room/exit-to-action exits)
+     )})
 
 (def indexes (-> (pci/register [entity/resolvers
                                 room/resolvers
