@@ -57,7 +57,8 @@
 (defn lever-activate-default
   [this]
   (let [linked-to (:linked-to this)
-        linked-to-effect {:action/activate linked-to}
+        effect (or (:effect this) :action/activate)
+        linked-to-effect {effect linked-to}
         effects [linked-to-effect]]
     {:describe "You heard a click somewhere."
      ::object/state {:switched? true}
@@ -71,6 +72,20 @@
 (defn default-failed-action
   []
   {:describe "Nothing happens"})
+
+(defn extend-object-rules
+  [base extra]
+  (let [update-fn (fn [base key]
+                    (update-in base [key] set/union (get extra key)))]
+    (-> base
+        (update-fn :semantics)
+        (update-fn :intrinsic)
+        (update-fn :actions)
+        (merge (dissoc extra :semantics :intrinsic :actions)))))
+
+(defn door-rules
+  [extra]
+  (extend-object-rules {:semantics #{:semantics/exit}} extra))
 
 (def semantic-rules
   {:semantics/exit
@@ -86,6 +101,7 @@
                         {:describe "You close the door"
                          :state :closed}
                         {:describe "Already closed"})))}
+
    :semantics/activable
    {:action/activate (fn [{:keys [instance]}]
                        (let [{:keys [switched? onActivate onDeactivate]} instance
@@ -95,6 +111,7 @@
                            true (onDeactivate instance)
                            false (onActivate instance)
                            (default-failed-action))))}
+
    :semantics/food
    {:action/eat (fn [{:keys [name]}] {:describe (str "Nom! No more " name " :(")})}
 
@@ -102,18 +119,20 @@
    {:action/eat (fn [{:keys [name]}] {:describe (str "Ouch! The " name " is poisoned :(")})}
 
    :intrinsic/flammable
-   {:action/burn (fn [{:keys [name]}] {:describe (str "The " name " bursts into flames!")})}})
+   {:action/burn (fn [{:keys [name action-params]}]
+                   (let [{:keys [color]} action-params]
+                     {:describe (str "The " name " bursts into " color (when color " ") "flames!")}))}})
 
-(def rules
+(def object-rules
   {::object/wooden-door
-   {:name "wooden door"
-    :intrinsic #{:intrinsic/flammable}
-    :semantics #{:semantics/exit}
-    :actions   {:action/open (fn [_] {:describe "You push open the creaky wooden door"})
-                :action/close (fn [_] {:describe "You close the creaky wooden door"})}}
+   (door-rules
+    {:name "wooden door"
+     :intrinsic #{:intrinsic/flammable}
+     :actions   {:action/open (fn [_] {:describe "You push open the creaky wooden door"})
+                 :action/close (fn [_] {:describe "You close the creaky wooden door"})}})
 
    ::object/door
-   {:semantics #{:semantics/exit}}
+   (door-rules {})
 
    ::object/lever
    {:semantics #{:semantics/activable}}
@@ -124,10 +143,9 @@
     :intrinsic #{:intrinsic/poisoned}}
 
    ::object/iron-door
-   {:name "iron door"
-    :intrinsic #{}
-    :semantics #{:semantics/exit}
-    :actions   {:action/open (fn [{:keys [name]}] {:describe (str "You heave the " name " open")})}}})
+   (door-rules
+    {:name "iron door"
+     :actions   {:action/open (fn [{:keys [name]}] {:describe (str "You heave the " name " open")})}})})
 
 (defn choose-rule
   "Chooses the most specific rule from a list of applicable rules"
@@ -136,37 +154,44 @@
     0  nil
     1 (first applicable-rule-keys)
     (->> applicable-rule-keys
-         (map #(if (seqable? %) % (list %)))
-         (sort-by count)
-         reverse
-         first)))
+         (map #(if (seqable? %)
+                 {:count (count %) :value %}
+                 {:count 1 :value %}))
+         (sort-by :count >)
+         first
+         :value)))
 
 (defn make-handler-args
-  [rule-key rule instance]
+  [rule-key rule instance action-params]
   {:rule-key rule-key
    :rule rule
    :name (or (:name rule) (name rule-key))
-   :instance (or instance {})})
+   :instance (or instance {})
+   :action-params action-params})
 
 (defn mutation-handler
   [mutation])
 
-(defn match-rules
-  [xs target-set]
-  (filter #(or (= (key %) target-set)
-               (contains? target-set (key %)))
-          (seq xs)))
+(defn filter-rules
+  [xs target-set action-key]
+  (let [match-rule-keys (fn [rule]
+                          (or (= (key rule) target-set)
+                              (contains? target-set (key rule))))
+        match-action (fn [rule]
+                       (not (nil? (get (val rule) action-key))))] ; (val rule) -> (get-semantic-rule-actions rule)
+    (filter #(and (match-action %) (match-rule-keys %)) (seq xs))))
 
 (defn perform
-  [action rule-key & {:as instance :or {}}]
+  [rules action action-params rule-key instance]
   (let [rule (rules rule-key)
         rule-handler (get-in rule [:actions action])
-        applicable-semantic-rules (match-rules semantic-rules
-                                               (set/union (:semantics rule)
-                                                          (:intrinsic rule)))
+        applicable-semantic-rules (filter-rules semantic-rules
+                                                (set/union (:semantics rule)
+                                                           (:intrinsic rule))
+                                                action)
         selected-semantic-rule-key (choose-rule (keys applicable-semantic-rules))
         selected-semantic-rule (get semantic-rules selected-semantic-rule-key)
-        handler-args (make-handler-args rule-key rule instance)
+        handler-args (make-handler-args rule-key rule instance action-params)
         semantic-handler (get selected-semantic-rule action)
         semantic-handler-result (when semantic-handler (semantic-handler handler-args))
         rule-handler-result (when rule-handler (rule-handler handler-args))]
@@ -175,26 +200,26 @@
       {:describe (str "Nothing happens when you " (name action) " the " (name rule-key))})))
 
 (defn object-perform
-  [action {::object/keys [object state]}]
-  (perform action object state))
+  [rules action action-params {::object/keys [object state]}]
+  (perform rules action action-params object state))
 
-(get-in semantic-rules [#{:intrinsic/poisoned :semantics/food} :action/eat])
+(perform object-rules :action/eat {} "runtime generated object 1" {})
 
-(perform :action/eat "runtime generated object 1")
+(perform object-rules :action/activate {} ::object/lever {:switched? true})
+(perform object-rules :action/activate {} ::object/lever {:switched? false})
+(object-perform object-rules :action/activate {} room/switched-off-lever)
 
-(perform :action/activate ::object/lever {:switched? true})
-(perform :action/activate ::object/lever {:switched? false})
-(object-perform :action/activate room/lever)
+(perform object-rules :action/open {} ::object/wooden-door {})
 
-(perform :action/open ::object/wooden-door)
+(perform object-rules :action/open {} ::object/iron-door {})
 
-(perform :action/open ::object/iron-door)
+(perform object-rules :action/burn {:color "blue"} ::object/wooden-door {})
 
-(perform :action/burn ::object/wooden-door)
+(perform object-rules :action/burn {} ::object/wooden-door {})
 
-(perform :action/burn ::object/iron-door)
+(perform object-rules :action/burn {} ::object/iron-door {})
 
-(perform :action/open ::object/door)
-(perform :action/close ::object/wooden-door {:state :close})
-(perform :action/close ::object/door {:state :close})
-(perform :action/close ::object/door {:state :open})
+(perform object-rules :action/open {} ::object/door {})
+(perform object-rules :action/close {} ::object/wooden-door {:state :close})
+(perform object-rules :action/close {} ::object/door {:state :close})
+(perform object-rules :action/close {} ::object/door {:state :open})

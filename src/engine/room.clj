@@ -9,18 +9,19 @@
             [com.wsscode.pathom3.connect.built-in.plugins :as pbip]
             [com.wsscode.pathom3.connect.built-in.resolvers :as pbir]))
 
-(def lever {::object/id 0
+(def switched-off-lever {::object/id 0
             ::object/object ::object/lever
-            ::object/state {:linked-to 1
+            ::object/state {:linked-to {::object/id 1}
+                            :effect :action/open
                             :switched? false}})
-(def door {::object/id 1
+(def closed-door {::object/id 1
            ::object/object ::object/wooden-door
            ::object/state {:exit-to 1
                            :open? false}})
 
 (def room1 {::id 0
             ::desc {::text "a small room"}
-            ::objects [lever door]})
+            ::objects [switched-off-lever closed-door]})
 (def room2 {::id 1
             ::desc {::text "a big hall"}
             ::objects []})
