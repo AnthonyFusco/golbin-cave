@@ -11,14 +11,18 @@
 
 (def switched-off-lever {::object/id 0
                          ::object/object ::object/lever
-                         :engine.action/state {:engine.action/effects [{:engine.action/type :engine.action/open
-                                                                        :engine.action/args {:some-other "param"}}]
+                         :engine.action/state {:engine.action/additional-effects [{:engine.action/type :engine.action/heal
+                                                                                   :engine.action/args {:engine.action/target :self}}]
                                                :linked-to {::object/id 1}
                                                :switched? false}})
 (def closed-door {::object/id 1
                   ::object/object ::object/wooden-door
                   :engine.action/state {:exit-to 1
                                         :open? false}})
+(def special-object {::object/id 2
+                     ::object/object ::object/special
+                     :engine.action/state {:engine.action/effects [{:engine.action/type :engine.action/open
+                                                                    :engine.action/args {:engine.action/target {::object/id 1}}}]}})
 
 (def room1 {::id 0
             ::desc {::text "a small room"}

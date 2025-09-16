@@ -70,22 +70,16 @@
   [instance]
   (let [state (:engine.action/state instance)
         id (::object/id instance)
+        prevent-default? (or (:engine.action/prevent-default? state) false)
         linked-to (:linked-to state)
-        effects (map (partial make-effect instance) (or (:engine.action/effects state) []))
-        ;; effect (or (:engine.action/effects state) {:engine.action/activate linked-to})
-        linked-to-effect {:engine.action/type :engine.action/activate :engine.action/args {:linked-to linked-to}}
-        self-effect (make-mutation {::object/id id} {:engine.action/state {:switched? true}})
-        effects (if (< 0 (count effects))
-                  (flatten [self-effect effects])
-                  [self-effect linked-to-effect])]
+        additional-effects (map (partial make-effect instance) (or (:engine.action/additional-effects state) []))
+        default-effects (if prevent-default?
+                          []
+                          [{:engine.action/type :engine.action/activate :engine.action/args {:linked-to linked-to}}])
+        self-effect (make-mutation {::object/id id} {:engine.action/state {:switched? (not (:switched? state))}})
+        effects (flatten [self-effect default-effects additional-effects])]
     {:describe "You heard a click somewhere."
      :engine.action/effects effects}))
-
-(defn lever-deactivate-default
-  [instance]
-  {:describe "You heard a muffled noise."
-   :engine.action/effects [(make-mutation {::object/id (::object/id instance)}
-                                          {:engine.action/state {:switched? false}})]})
 
 (defn default-failed-action
   []
@@ -122,14 +116,9 @@
 
    :semantics/activable
    {:action/activate (fn [{:keys [instance]}]
-                       (let [{:keys [:engine.action/state onActivate onDeactivate]} instance
-                             switched? (:switched? state)
-                             onActivate (or onActivate lever-activate-default)
-                             onDeactivate (or onDeactivate lever-deactivate-default)]
-                         (case switched?
-                           true (onDeactivate instance)
-                           false (onActivate instance)
-                           (default-failed-action))))}
+                       (let [{:keys [onActivate]} instance
+                             onActivate (or onActivate lever-activate-default)]
+                         (onActivate instance)))}
 
    :semantics/food
    {:action/eat (fn [{:keys [name]}] {:describe (str "Nom! No more " name " :(")})}
@@ -224,9 +213,16 @@
 
 (perform object-rules :action/eat {} "runtime generated object 1" {})
 
-(perform object-rules :action/activate {} ::object/lever {::object/id "toto" :engine.action/state {:switched? true}})
-(perform object-rules :action/activate {} ::object/lever {:engine.action/state {:switched? false :linked-to "toto"}})
+(perform object-rules :action/activate {}
+         ::object/lever {::object/id "toto" :engine.action/state {:switched? true}})
+
+(perform object-rules :action/activate {}
+         ::object/lever {::object/id "tata"
+                         :engine.action/state {:switched? false :linked-to "toto"
+                                               :engine.action/prevent-default? true}})
+
 (object-perform object-rules :action/activate {} room/switched-off-lever)
+(object-perform object-rules :action/activate {} room/special-object)
 
 (perform object-rules :action/open {} ::object/wooden-door {})
 
