@@ -10,14 +10,15 @@
             [com.wsscode.pathom3.connect.built-in.resolvers :as pbir]))
 
 (def switched-off-lever {::object/id 0
-            ::object/object ::object/lever
-            ::object/state {:linked-to {::object/id 1}
-                            :effect :action/open
-                            :switched? false}})
+                         ::object/object ::object/lever
+                         :engine.action/state {:engine.action/effects [{:engine.action/type :engine.action/open
+                                                                        :engine.action/args {:some-other "param"}}]
+                                               :linked-to {::object/id 1}
+                                               :switched? false}})
 (def closed-door {::object/id 1
-           ::object/object ::object/wooden-door
-           ::object/state {:exit-to 1
-                           :open? false}})
+                  ::object/object ::object/wooden-door
+                  :engine.action/state {:exit-to 1
+                                        :open? false}})
 
 (def room1 {::id 0
             ::desc {::text "a small room"}

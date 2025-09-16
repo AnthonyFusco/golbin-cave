@@ -54,20 +54,38 @@
 (core/query-one core/env ::core/initiatives)
 (core/query-one tmp3 ::core/initiatives)
 
+(defn make-mutation
+  [target args]
+  {:engine.action/type :engine.action/mutation
+   :engine.action/target target
+   :engine.action/args args})
+
+(defn make-effect
+  [instance effect]
+  (let [type (:engine.action/type effect)
+        args (:engine.action/args effect)]
+    {:engine.action/type type :engine.action/args (merge args instance)}))
+
 (defn lever-activate-default
-  [this]
-  (let [linked-to (:linked-to this)
-        effect (or (:effect this) :action/activate)
-        linked-to-effect {effect linked-to}
-        effects [linked-to-effect]]
+  [instance]
+  (let [state (:engine.action/state instance)
+        id (::object/id instance)
+        linked-to (:linked-to state)
+        effects (map (partial make-effect instance) (or (:engine.action/effects state) []))
+        ;; effect (or (:engine.action/effects state) {:engine.action/activate linked-to})
+        linked-to-effect {:engine.action/type :engine.action/activate :engine.action/args {:linked-to linked-to}}
+        self-effect (make-mutation {::object/id id} {:engine.action/state {:switched? true}})
+        effects (if (< 0 (count effects))
+                  (flatten [self-effect effects])
+                  [self-effect linked-to-effect])]
     {:describe "You heard a click somewhere."
-     ::object/state {:switched? true}
      :engine.action/effects effects}))
 
 (defn lever-deactivate-default
-  [this]
+  [instance]
   {:describe "You heard a muffled noise."
-   ::object/state {:switched? false}})
+   :engine.action/effects [(make-mutation {::object/id (::object/id instance)}
+                                          {:engine.action/state {:switched? false}})]})
 
 (defn default-failed-action
   []
@@ -90,13 +108,13 @@
 (def semantic-rules
   {:semantics/exit
    {:action/open (fn [{:keys [instance]}]
-                   (let [{:keys [state]} instance]
+                   (let [{:keys [:engine.action/state]} instance]
                      (if (= state :open)
                        {:describe "Already opened."}
                        {:describe (str "You open the " name)
                         :engine.action/mutation {:state :open}})))
     :action/close (fn [{:keys [instance]}]
-                    (let [{:keys [state]} instance]
+                    (let [{:keys [:state]} instance]
                       (if (= state :open)
                         {:describe "You close the door"
                          :state :closed}
@@ -104,7 +122,8 @@
 
    :semantics/activable
    {:action/activate (fn [{:keys [instance]}]
-                       (let [{:keys [switched? onActivate onDeactivate]} instance
+                       (let [{:keys [:engine.action/state onActivate onDeactivate]} instance
+                             switched? (:switched? state)
                              onActivate (or onActivate lever-activate-default)
                              onDeactivate (or onDeactivate lever-deactivate-default)]
                          (case switched?
@@ -200,13 +219,13 @@
       {:describe (str "Nothing happens when you " (name action) " the " (name rule-key))})))
 
 (defn object-perform
-  [rules action action-params {::object/keys [object state]}]
-  (perform rules action action-params object state))
+  [rules action action-params {::object/keys [object] :as instance}]
+  (perform rules action action-params object instance))
 
 (perform object-rules :action/eat {} "runtime generated object 1" {})
 
-(perform object-rules :action/activate {} ::object/lever {:switched? true})
-(perform object-rules :action/activate {} ::object/lever {:switched? false})
+(perform object-rules :action/activate {} ::object/lever {::object/id "toto" :engine.action/state {:switched? true}})
+(perform object-rules :action/activate {} ::object/lever {:engine.action/state {:switched? false :linked-to "toto"}})
 (object-perform object-rules :action/activate {} room/switched-off-lever)
 
 (perform object-rules :action/open {} ::object/wooden-door {})
