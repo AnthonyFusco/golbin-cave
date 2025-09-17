@@ -9,24 +9,29 @@
             [com.wsscode.pathom3.connect.built-in.plugins :as pbip]
             [com.wsscode.pathom3.connect.built-in.resolvers :as pbir]))
 
-(def switched-off-lever {::object/id 0
-                         ::object/object ::object/lever
-                         :engine.action/state {:engine.action/additional-effects [{:engine.action/type :engine.action/heal
-                                                                                   :engine.action/args {:engine.action/target :self}}]
-                                               :linked-to {::object/id 1}
-                                               :switched? false}})
-(def closed-door {::object/id 1
-                  ::object/object ::object/wooden-door
-                  :engine.action/state {:exit-to 1
-                                        :open? false}})
-(def special-object {::object/id 2
-                     ::object/object ::object/special
-                     :engine.action/state {:engine.action/effects [{:engine.action/type :engine.action/open
-                                                                    :engine.action/args {:engine.action/target {::object/id 1}}}]}})
+(def switched-off-lever-of-healing
+  {::object/id 0
+   ::object/object ::object/lever
+   :engine.action/state {:name "Lever of Healing"
+                         :engine.action/additional-effects [{:engine.action/type :engine.action/heal
+                                                             :engine.action/args {:engine.action/target :self}}]
+                         :engine.action/target {::object/id 1}
+                         :switched? false}})
+(def closed-door
+  {::object/id 1
+   ::object/object ::object/wooden-door
+   :engine.action/state {:exit-to 1
+                         :open? false}})
+(def special-object
+  {::object/id 2
+   ::object/object ::object/special
+   :engine.action/state {:engine.action/target "toto"
+                         :engine.action/effects [{:engine.action/type :engine.action/open
+                                                  :engine.action/args {:engine.action/target {::object/id 1}}}]}})
 
 (def room1 {::id 0
             ::desc {::text "a small room"}
-            ::objects [switched-off-lever closed-door]})
+            ::objects [switched-off-lever-of-healing closed-door]})
 (def room2 {::id 1
             ::desc {::text "a big hall"}
             ::objects []})

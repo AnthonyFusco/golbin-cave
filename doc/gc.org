@@ -1,5 +1,6 @@
 * Goblin cave
 
+
 the player input makes the game tick
 no game engine
 
@@ -13,6 +14,7 @@ martial is ?
 monster faction and human faction
 
 ** MVP
+
 control using fns
 move in dungeon
 change boolean like a switch, triggers an event, a door is now open
@@ -27,3 +29,6 @@ each new goblin gives you more processing power
 queries are question you formulate to the world, enabling to use the data to build behavior
 golbins are individual but share a mind link to the leader
 this link enables more magic for the leader
+
+
+* design

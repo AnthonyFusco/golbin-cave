@@ -61,25 +61,53 @@
    :engine.action/args args})
 
 (defn make-effect
-  [instance effect]
+  [state effect]
   (let [type (:engine.action/type effect)
         args (:engine.action/args effect)]
-    {:engine.action/type type :engine.action/args (merge args instance)}))
+    {:engine.action/type type :engine.action/args (merge args state)}))
 
-(defn lever-activate-default
-  [instance]
-  (let [state (:engine.action/state instance)
-        id (::object/id instance)
-        prevent-default? (or (:engine.action/prevent-default? state) false)
-        linked-to (:linked-to state)
-        additional-effects (map (partial make-effect instance) (or (:engine.action/additional-effects state) []))
-        default-effects (if prevent-default?
-                          []
-                          [{:engine.action/type :engine.action/activate :engine.action/args {:linked-to linked-to}}])
-        self-effect (make-mutation {::object/id id} {:engine.action/state {:switched? (not (:switched? state))}})
-        effects (flatten [self-effect default-effects additional-effects])]
-    {:describe "You heard a click somewhere."
-     :engine.action/effects effects}))
+(defn make-effects
+  [state effects]
+  (map (partial make-effect state) effects))
+
+(defn make-additional-effects
+  [state]
+  (make-effects state (get state :engine.action/additional-effects [])))
+
+(defn default-activate-action
+  [state]
+  {:pre [(contains? state :engine.action/target)]}
+  {:engine.action/type :engine.action/activate :engine.action/args (assoc state :description "default activate action")})
+
+(defn lever-default-self-mutation
+  [id state]
+  {:pre [(contains? state :switched?)]}
+  (make-mutation {::object/id id}
+                 (assoc (update state :switched? not)
+                        :description "self-mutation => lever switched state")))
+
+(defn compute-full-effects
+  [state {:keys [default-effects additional-effects self-effects]}]
+  (let [prevent-default? (boolean (:engine.action/prevent-default? state))]
+    (flatten [(if prevent-default? [] default-effects) self-effects additional-effects])))
+
+(defn activate-default-handler
+  [{:keys [:engine.action/state]}]
+  (let [additional-effects (make-additional-effects state)
+        default-effects [(default-activate-action state)]
+        self-effects []
+        effects (compute-full-effects state {:default-effects default-effects
+                                             :additional-effects additional-effects
+                                             :self-effects self-effects})]
+    {:engine.action/effects effects}))
+
+(defn lever-activate-handler
+  [{:keys [:engine.action/state ::object/id] :as instance}]
+  (let [self-effects [(lever-default-self-mutation id state)]
+        default-activate-handler (activate-default-handler instance)]
+    (-> default-activate-handler
+        (update-in [:engine.action/effects] conj self-effects)
+        (assoc :description "You heard a click somewhere"))))
 
 (defn default-failed-action
   []
@@ -101,7 +129,7 @@
 
 (def semantic-rules
   {:semantics/exit
-   {:action/open (fn [{:keys [instance]}]
+   {:action/open (fn [{:keys [name instance]}]
                    (let [{:keys [:engine.action/state]} instance]
                      (if (= state :open)
                        {:describe "Already opened."}
@@ -117,7 +145,7 @@
    :semantics/activable
    {:action/activate (fn [{:keys [instance]}]
                        (let [{:keys [onActivate]} instance
-                             onActivate (or onActivate lever-activate-default)]
+                             onActivate (or onActivate activate-default-handler)]
                          (onActivate instance)))}
 
    :semantics/food
@@ -143,7 +171,11 @@
    (door-rules {})
 
    ::object/lever
-   {:semantics #{:semantics/activable}}
+   {:semantics #{:semantics/activable}
+    :actions {:action/activate (fn [{:keys [instance]}]
+                                 (let [{:keys [onActivate]} instance
+                                       onActivate (or onActivate lever-activate-handler)]
+                                   (onActivate instance)))}}
 
    "runtime generated object 1"
    {:name "boulgiboulga"
@@ -171,11 +203,13 @@
 
 (defn make-handler-args
   [rule-key rule instance action-params]
-  {:rule-key rule-key
-   :rule rule
-   :name (or (:name rule) (name rule-key))
-   :instance (or instance {})
-   :action-params action-params})
+  (let [state (:engine.action/state instance)
+        name (or (:name state) (:name rule) (name rule-key))]
+    {:rule-key rule-key
+     :rule rule
+     :name name
+     :instance (or instance {})
+     :action-params action-params}))
 
 (defn mutation-handler
   [mutation])
@@ -207,22 +241,26 @@
       (merge semantic-handler-result rule-handler-result)
       {:describe (str "Nothing happens when you " (name action) " the " (name rule-key))})))
 
-(defn object-perform
+(defn perform-on-object
   [rules action action-params {::object/keys [object] :as instance}]
   (perform rules action action-params object instance))
 
 (perform object-rules :action/eat {} "runtime generated object 1" {})
 
 (perform object-rules :action/activate {}
-         ::object/lever {::object/id "toto" :engine.action/state {:switched? true}})
+         ::object/lever {::object/id "toto"
+                         :engine.action/state {:switched? true
+                                               :engine.action/target 0}})
 
 (perform object-rules :action/activate {}
          ::object/lever {::object/id "tata"
-                         :engine.action/state {:switched? false :linked-to "toto"
+                         :engine.action/state {:switched? false
+                                               :engine.action/target "toto"
                                                :engine.action/prevent-default? true}})
 
-(object-perform object-rules :action/activate {} room/switched-off-lever)
-(object-perform object-rules :action/activate {} room/special-object)
+(perform-on-object object-rules :action/activate {} room/switched-off-lever-of-healing)
+(perform-on-object (assoc object-rules ::object/special {:semantics #{:semantics/activable}})
+                   :action/activate {} room/special-object)
 
 (perform object-rules :action/open {} ::object/wooden-door {})
 
@@ -234,6 +272,7 @@
 
 (perform object-rules :action/burn {} ::object/iron-door {})
 
+(perform object-rules :action/open {} ::object/door {:engine.action/state {:name "Titouan la porte"}})
 (perform object-rules :action/open {} ::object/door {})
 (perform object-rules :action/close {} ::object/wooden-door {:state :close})
 (perform object-rules :action/close {} ::object/door {:state :close})
